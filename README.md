@@ -2,6 +2,11 @@
 
 FastAPI integration for [x402](https://x402.io) HTTP-native payments using stablecoins.
 
+## Related Packages
+
+- **[fastx402-ts](https://github.com/cybertheory/fastx402-ts)** - TypeScript/Express version for Node.js backends
+- **[x402instant](https://github.com/cybertheory/x402instant)** - Frontend SDK for browser-based wallet integration
+
 ## Installation
 
 ```bash
@@ -156,6 +161,26 @@ response = client.get("https://api.example.com/protected")
 async def main():
     async with X402HttpxClient(handle_x402=handle_x402) as client:
         response = await client.get("https://api.example.com/protected")
+```
+
+## Frontend Integration
+
+For frontend applications, use **[x402instant](https://github.com/cybertheory/x402instant)** to handle wallet connections and payment signing:
+
+```python
+# Backend (fastx402)
+@app.get("/paid")
+@payment_required(price="0.01", currency="USDC", chain_id="8453")
+def paid_route():
+    return {"msg": "you paid!"}
+```
+
+```typescript
+// Frontend (x402instant)
+import { x402Fetch } from "x402instant";
+
+const response = await x402Fetch("http://api.example.com/paid");
+const data = await response.json();
 ```
 
 ## Testing
