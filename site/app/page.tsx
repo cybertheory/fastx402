@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { Button } from "../components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
-import { Badge } from "../components/ui/badge";
-import { Nav } from "../components/nav";
-import { Footer } from "../components/footer";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Nav } from "@/components/nav";
+import { Footer } from "@/components/footer";
 import { Code, Zap, Shield, Globe, ArrowRight, CheckCircle2 } from "lucide-react";
 
 export default function Home() {
