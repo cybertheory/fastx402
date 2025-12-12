@@ -1,9 +1,14 @@
 import type { NextConfig } from "next";
+import path from "path";
 
 const nextConfig: NextConfig = {
   /* config options here */
-  // Silence Turbopack warning
-  turbopack: {},
+  // Configure Turbopack to resolve path aliases
+  turbopack: {
+    resolveAlias: {
+      "@": path.resolve(__dirname),
+    },
+  },
 };
 
 export default nextConfig;
