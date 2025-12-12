@@ -46,9 +46,6 @@ class PaymentConfig(BaseModel):
     merchant_address: str
     chain_id: int = 8453
     currency: str = "USDC"
-    mode: str = "instant"  # "instant" or "embedded"
-    waas_provider: Optional[str] = Field(None, description="WAAS provider name (e.g., 'privy')")
-    waas_config: Optional[Dict[str, Any]] = Field(None, description="WAAS provider config")
 
 
 class PaymentVerificationResult(BaseModel):

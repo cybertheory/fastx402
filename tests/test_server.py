@@ -12,7 +12,6 @@ def test_load_config_from_env(monkeypatch):
     monkeypatch.setenv("X402_MERCHANT_ADDRESS", "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb0")
     monkeypatch.setenv("X402_CHAIN_ID", "8453")
     monkeypatch.setenv("X402_CURRENCY", "USDC")
-    monkeypatch.setenv("X402_MODE", "instant")
     
     server = X402Server()
     assert server.config.merchant_address == "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb0"

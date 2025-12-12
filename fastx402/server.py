@@ -8,7 +8,6 @@ from fastapi import Request, HTTPException, status
 from fastapi.responses import JSONResponse
 from fastx402.types import PaymentChallenge, PaymentConfig, PaymentVerificationResult
 from fastx402.utils import encode_payment_message, verify_signature, generate_nonce
-from fastx402.waas.base import WAASProvider
 
 
 class X402Server:
@@ -16,21 +15,18 @@ class X402Server:
     
     def __init__(
         self,
-        config: Optional[PaymentConfig] = None,
-        waas_provider: Optional[WAASProvider] = None
+        config: Optional[PaymentConfig] = None
     ):
         """
         Initialize x402 server
         
         Args:
             config: Payment configuration (or loads from env)
-            waas_provider: Optional WAAS provider for embedded mode
         """
         if config is None:
             config = self._load_config_from_env()
         
         self.config = config
-        self.waas_provider = waas_provider
     
     @staticmethod
     def _load_config_from_env() -> PaymentConfig:
@@ -46,8 +42,6 @@ class X402Server:
             merchant_address=merchant_address,
             chain_id=int(os.getenv("X402_CHAIN_ID", "8453")),
             currency=os.getenv("X402_CURRENCY", "USDC"),
-            mode=os.getenv("X402_MODE", "instant"),
-            waas_provider=os.getenv("X402_WAAS_PROVIDER"),
         )
     
     def create_challenge(
@@ -114,26 +108,20 @@ class X402Server:
             
             challenge = PaymentChallenge(**challenge_dict)
             
-            # Verify signature
-            if self.config.mode == "embedded" and self.waas_provider:
-                return await self.waas_provider.verify_payment(
-                    challenge, signature, signer
-                )
-            else:
-                # Instant mode: verify locally
-                message_hash = encode_payment_message(challenge.model_dump())
-                is_valid = verify_signature(signature, message_hash, signer)
-                
-                if not is_valid:
-                    return PaymentVerificationResult(
-                        valid=False,
-                        error="Signature verification failed"
-                    )
-                
+            # Verify signature cryptographically (same for all modes)
+            message_hash = encode_payment_message(challenge.model_dump())
+            is_valid = verify_signature(signature, message_hash, signer)
+            
+            if not is_valid:
                 return PaymentVerificationResult(
-                    valid=True,
-                    signer=signer
+                    valid=False,
+                    error="Signature verification failed"
                 )
+            
+            return PaymentVerificationResult(
+                valid=True,
+                signer=signer
+            )
         except Exception as e:
             return PaymentVerificationResult(
                 valid=False,

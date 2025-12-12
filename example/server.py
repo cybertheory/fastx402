@@ -30,8 +30,7 @@ configure_server(
     config=PaymentConfig(
         merchant_address=os.getenv("X402_MERCHANT_ADDRESS", "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb"),
         chain_id=int(os.getenv("X402_CHAIN_ID", "8453")),
-        currency=os.getenv("X402_CURRENCY", "USDC"),
-        mode="instant"
+        currency=os.getenv("X402_CURRENCY", "USDC")
     )
 )
 
@@ -163,5 +162,5 @@ if __name__ == "__main__":
     print("  GET  /download/{id} - Download (0.03 USDC)")
     print("  POST /api/submit    - Submit (0.01 USDC)")
     print("\n" + "="*60 + "\n")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8001)
 

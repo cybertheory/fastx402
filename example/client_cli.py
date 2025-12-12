@@ -99,31 +99,42 @@ class WalletSigner:
 class EnhancedX402Client(X402Client):
     """Enhanced client with wallet signing capability"""
     
-    def __init__(self, base_url: str, signer: Optional[WalletSigner] = None):
+    def __init__(self, base_url: str, signer: Optional[WalletSigner] = None, rpc_url: Optional[str] = None):
         """
         Initialize enhanced client
         
         Args:
             base_url: Base URL for API
-            signer: Optional wallet signer (will create one if not provided)
+            signer: Optional wallet signer (will create one if not provided and no rpc_url)
+            rpc_url: Optional RPC URL for frontend signing (if None, uses local signer)
         """
-        super().__init__(base_url=base_url)
-        self.signer = signer or WalletSigner()
+        # Create RPC handler if signer is provided and no RPC URL
+        rpc_handler = None
+        if not rpc_url:
+            # Use local signer
+            if signer is None:
+                signer = WalletSigner()
+            
+            async def handle_402(challenge: PaymentChallenge) -> Optional[PaymentSignature]:
+                return self._sign_challenge(challenge)
+            rpc_handler = handle_402
+        
+        super().__init__(
+            base_url=base_url,
+            rpc_url=rpc_url,
+            rpc_handler=rpc_handler
+        )
+        self.signer = signer
     
-    async def _handle_402(
-        self,
-        challenge: PaymentChallenge,
-        original_url: str
-    ) -> Optional[Dict[str, Any]]:
+    def _sign_challenge(self, challenge: PaymentChallenge) -> PaymentSignature:
         """
-        Handle 402 challenge by signing payment
+        Sign a payment challenge using the wallet signer
         
         Args:
             challenge: Payment challenge
-            original_url: Original request URL
             
         Returns:
-            Payment data with signature
+            PaymentSignature with signature
         """
         print(f"\n{'='*60}")
         print("Payment Required")
@@ -137,33 +148,16 @@ class EnhancedX402Client(X402Client):
         
         # Sign the challenge
         print("\nSigning payment challenge...")
-        try:
-            signature = self.signer.sign_payment_challenge(challenge)
-            
-            if not signature:
-                print("[ERROR] Signature is None")
-                return None
-            
-            print("[OK] Payment signed successfully!")
-            print(f"Signature: {signature.signature[:20]}...")
-            print(f"{'='*60}\n")
-            
-            # Use model_dump() for Pydantic v2, fallback to dict() for v1
-            challenge_dict = signature.challenge.model_dump() if hasattr(signature.challenge, 'model_dump') else signature.challenge.dict()
-            
-            payment_data = {
-                "signature": signature.signature,
-                "signer": signature.signer,
-                "challenge": challenge_dict
-            }
-            
-            print(f"Returning payment data with signer: {payment_data['signer']}")
-            return payment_data
-        except Exception as e:
-            print(f"[ERROR] Failed to sign payment: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return None
+        signature = self.signer.sign_payment_challenge(challenge)
+        
+        if not signature:
+            raise ValueError("Failed to sign payment challenge")
+        
+        print("[OK] Payment signed successfully!")
+        print(f"Signature: {signature.signature[:20]}...")
+        print(f"{'='*60}\n")
+        
+        return signature
 
 
 async def make_request(
@@ -277,15 +271,25 @@ Examples:
             print(f"[ERROR] Invalid JSON data: {args.data}")
             sys.exit(1)
     
-    # Create signer
-    try:
-        signer = WalletSigner(private_key=args.key)
-    except Exception as e:
-        print(f"[ERROR] Failed to initialize wallet: {str(e)}")
-        sys.exit(1)
+    # Create signer (only if not using RPC URL)
+    signer = None
+    if not args.rpc_url:
+        try:
+            signer = WalletSigner(private_key=args.key)
+        except Exception as e:
+            print(f"[ERROR] Failed to initialize wallet: {str(e)}")
+            sys.exit(1)
     
     # Create client
-    client = EnhancedX402Client(base_url=args.url, signer=signer)
+    client = EnhancedX402Client(
+        base_url=args.url,
+        signer=signer,
+        rpc_url=args.rpc_url
+    )
+    
+    if args.rpc_url:
+        print(f"[INFO] Using RPC URL: {args.rpc_url}")
+        print("[INFO] Payment challenges will be sent to frontend for signing")
     
     try:
         await make_request(client, args.method, endpoint, data)

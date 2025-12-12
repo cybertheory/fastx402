@@ -42,6 +42,12 @@ dev = [
     "black>=23.0.0",
     "mypy>=1.5.0",
 ]
+waas = [
+    "privy>=0.1.0",  # Privy Python SDK for embedded wallets
+]
+ws = [
+    "websockets>=12.0",  # WebSocket server for x402instant communication
+]
 
 [tool.setuptools.packages.find]
 where = ["."]

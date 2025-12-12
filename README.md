@@ -23,7 +23,6 @@ Create a `.env` file:
 X402_MERCHANT_ADDRESS=0xYourMerchantAddress
 X402_CHAIN_ID=8453
 X402_CURRENCY=USDC
-X402_MODE=instant
 ```
 
 ### 2. Basic Usage
@@ -105,26 +104,26 @@ The x402 payment flow follows these steps:
 - Signature verification using `eth-account` library
 - Supports checksum address validation
 
-### 2. Payment Modes
+### 2. Payment Modes (Client-Side)
 
 **Instant Mode** (default):
-- Frontend handles wallet signing via RPC (MetaMask, WalletConnect, etc.)
-- Server verifies signatures locally using cryptographic verification
+- Client uses user's wallet (MetaMask, WalletConnect, etc.) to sign payments
+- Server verifies signatures cryptographically
 - No external dependencies for verification
 
 **Embedded Mode**:
-- Uses Wallet-as-a-Service (WAAS) providers like Privy
-- Server-side wallet management and signing
-- Provider-based signature verification
+- Client uses Wallet-as-a-Service (WAAS) providers like Privy for signing
+- Server verifies signatures cryptographically (same as instant mode)
+- WAAS provider handles wallet management on client side
+
+**Note**: Mode is configured on the client, not the server. The server always verifies signatures the same way.
 
 ### 3. Configuration Options
 
-**Environment Variables**:
+**Server Environment Variables**:
 - `X402_MERCHANT_ADDRESS`: Merchant wallet address (required)
 - `X402_CHAIN_ID`: Default chain ID (e.g., 8453 for Base)
 - `X402_CURRENCY`: Default currency (e.g., USDC)
-- `X402_MODE`: Payment mode (`instant` or `embedded`)
-- `X402_WAAS_PROVIDER`: WAAS provider name (for embedded mode)
 
 **Per-Route Configuration**:
 - Override defaults on individual endpoints
@@ -138,12 +137,12 @@ The x402 payment flow follows these steps:
 - Automatic 402 detection and retry logic
 - Seamless integration with existing codebases
 
-### 5. WAAS Integration
+### 5. WAAS Integration (Client-Side)
 
-- Abstract `WAASProvider` base class for extensibility
-- Privy provider implementation included
+- WAAS providers are configured on the client side
+- Use x402instant library for client-side WAAS integration
+- Privy provider implementation included in x402instant
 - Easy to add support for other WAAS providers
-- Server-side wallet management
 
 ### 6. Security Features
 
@@ -161,7 +160,6 @@ The x402 payment flow follows these steps:
 X402_MERCHANT_ADDRESS=0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb
 X402_CHAIN_ID=8453
 X402_CURRENCY=USDC
-X402_MODE=instant
 ```
 
 ### Per-Route Configuration
@@ -182,29 +180,23 @@ def expensive_route():
 
 ```python
 from fastx402 import configure_server
-from fastx402.waas import PrivyProvider
-
-privy = PrivyProvider(
-    app_id="your-privy-app-id",
-    app_secret="your-privy-app-secret"
-)
 
 configure_server(
     config=PaymentConfig(
         merchant_address="0x...",
         chain_id=8453,
-        currency="USDC",
-        mode="embedded"
-    ),
-    waas_provider=privy
+        currency="USDC"
+    )
 )
 ```
 
-## Payment Modes
+**Note**: WAAS providers are configured on the client side, not the server. See client-side usage below.
+
+## Payment Modes (Client-Side)
 
 ### Instant Mode (Default)
 
-Frontend handles wallet signing via RPC. The server verifies signatures locally.
+Client uses user's wallet (MetaMask, WalletConnect, etc.) to sign payments. Server verifies signatures cryptographically.
 
 **Use Cases**:
 - Web applications with browser wallets
@@ -213,29 +205,14 @@ Frontend handles wallet signing via RPC. The server verifies signatures locally.
 
 ### Embedded Mode
 
-Uses Wallet-as-a-Service (WAAS) providers like Privy for embedded wallet signing.
+Client uses Wallet-as-a-Service (WAAS) providers like Privy for signing. Server verifies signatures cryptographically (same as instant mode).
 
 **Use Cases**:
-- Applications requiring server-side wallet management
-- Embedded wallet solutions
+- Applications requiring embedded wallet solutions
 - Applications without direct wallet access
+- Simplified onboarding with WAAS providers
 
-## WAAS Integration
-
-### Privy Setup
-
-```python
-from fastx402.waas import PrivyProvider
-from fastx402 import configure_server
-
-# Configure Privy in your app initialization
-privy = PrivyProvider(
-    app_id="your-privy-app-id",
-    app_secret="your-privy-app-secret"
-)
-
-configure_server(waas_provider=privy)
-```
+**Note**: Mode is configured on the client side using x402instant library. See x402instant documentation for WAAS setup.
 
 ## Client Usage
 
@@ -243,12 +220,32 @@ configure_server(waas_provider=privy)
 
 For backend-to-backend requests that need to handle 402 challenges:
 
+**Using WebSocket server (frontend x402instant connects to us):**
 ```python
 from fastx402 import X402Client
 
+# Client starts WebSocket server - frontend x402instant auto-connects
 client = X402Client(
     base_url="https://api.example.com",
-    wallet_provider="instant"  # or "embedded"
+    ws_port=4021  # Frontend x402instant will connect to this
+)
+
+response = await client.get("/paid-endpoint")
+data = await response.json()
+```
+
+**Using RPC handler (local signing):**
+```python
+from fastx402 import X402Client
+from fastx402.types import PaymentChallenge, PaymentSignature
+
+async def sign_payment(challenge: PaymentChallenge) -> Optional[PaymentSignature]:
+    # Sign challenge locally (e.g., using private key or WAAS)
+    return signed_payment
+
+client = X402Client(
+    base_url="https://api.example.com",
+    rpc_handler=sign_payment
 )
 
 response = await client.get("/paid-endpoint")
@@ -303,6 +300,135 @@ async def main():
         response = await client.get("https://api.example.com/protected")
 ```
 
+## Framework Wrappers
+
+fastx402 provides convenience wrappers for popular frameworks to enable x402 payment handling:
+
+### FastAPI Server Wrapper
+
+Enable FastAPI servers to make outgoing x402 requests to other services:
+
+```python
+from fastapi import FastAPI
+from fastx402 import wrap_fastapi_server
+
+app = FastAPI()
+
+async def handle_x402(challenge):
+    return await sign_payment(challenge)
+
+# Wrap the FastAPI app to enable x402 requests
+app = wrap_fastapi_server(
+    app=app,
+    handle_x402=handle_x402
+)
+
+@app.get("/proxy")
+async def proxy_endpoint():
+    # Use the x402-enabled client from app state
+    client = app.state.x402_client
+    response = await client.get("https://api.example.com/paid-endpoint")
+    return await response.json()
+```
+
+Or use the `X402FastAPIApp` class:
+
+```python
+from fastx402 import X402FastAPIApp
+
+async def handle_x402(challenge):
+    return await sign_payment(challenge)
+
+app = X402FastAPIApp(
+    handle_x402=handle_x402
+)
+
+@app.app.get("/proxy")
+async def proxy_endpoint():
+    client = app.app.state.x402_client
+    response = await client.get("https://api.example.com/paid")
+    return await response.json()
+```
+
+### FastMCP Client Wrapper
+
+Wrap FastMCP clients to automatically catch 402 responses and fire callbacks:
+
+```python
+from fastmcp import Client as FastMCPClient
+from fastx402 import wrap_fastmcp_client
+
+async def handle_x402(challenge):
+    return await sign_payment(challenge)
+
+# Wrap existing FastMCP client
+mcp_client = FastMCPClient("https://api.example.com/mcp")
+wrapped_client = wrap_fastmcp_client(
+    handle_x402=handle_x402,
+    mcp_client=mcp_client
+)
+
+async with wrapped_client as client:
+    result = await client.call_tool("tool_name", {"param": "value"})
+```
+
+Or use the `X402FastMCPClient` class:
+
+```python
+from fastx402 import X402FastMCPClient
+
+async def handle_x402(challenge):
+    return await sign_payment(challenge)
+
+client = X402FastMCPClient(
+    url="https://api.example.com/mcp",
+    handle_x402=handle_x402
+)
+
+async with client as mcp:
+    result = await mcp.call_tool("tool_name", {"param": "value"})
+```
+
+### FastMCP Server Wrapper
+
+Enable FastMCP servers to make outgoing x402 requests to other services:
+
+```python
+from fastmcp import Server as FastMCPServer
+from fastx402 import wrap_fastmcp_server
+
+async def handle_x402(challenge):
+    return await sign_payment(challenge)
+
+# Wrap existing FastMCP server
+server = FastMCPServer()
+wrapped_server = wrap_fastmcp_server(
+    handle_x402=handle_x402,
+    mcp_server=server
+)
+
+# Now server can make x402 requests
+response = await wrapped_server.x402_client.get("https://api.example.com/paid")
+```
+
+Or use the `X402FastMCPServer` class:
+
+```python
+from fastx402 import X402FastMCPServer
+
+async def handle_x402(challenge):
+    return await sign_payment(challenge)
+
+server = X402FastMCPServer(
+    handle_x402=handle_x402
+)
+
+# Make x402 requests using the attached client
+response = await server.x402_client.get("https://api.example.com/paid")
+```
+
+**Note**: FastMCP wrappers require `fastmcp` to be installed. FastAPI server wrapper requires `fastapi` to be installed. These are optional dependencies and the wrappers will only be available if the respective packages are installed.
+
 ## Type System
 
 The library uses Pydantic models for type safety and validation:
@@ -317,7 +443,7 @@ The library uses Pydantic models for type safety and validation:
 ### Server Functions
 
 - `payment_required(price, currency=None, chain_id=None, description=None)` - FastAPI decorator for payment protection
-- `configure_server(config=None, waas_provider=None)` - Configure global server instance
+- `configure_server(config=None)` - Configure global server instance
 - `X402Server` - Server class for challenge creation and verification
   - `create_challenge(price, currency=None, chain_id=None, description=None)` - Create payment challenge
   - `verify_payment_header(request)` - Verify X-PAYMENT header

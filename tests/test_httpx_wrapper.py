@@ -147,3 +147,4 @@ async def test_httpx_client_async_context_manager(mock_402_response):
     
     mock_client.aclose.assert_called_once()
 
+

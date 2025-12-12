@@ -13,10 +13,10 @@ from fastx402.types import PaymentConfig, PaymentVerificationResult
 _server_instance: Optional[X402Server] = None
 
 
-def configure_server(config: Optional[PaymentConfig] = None, waas_provider=None):
+def configure_server(config: Optional[PaymentConfig] = None):
     """Configure global x402 server instance"""
     global _server_instance
-    _server_instance = X402Server(config=config, waas_provider=waas_provider)
+    _server_instance = X402Server(config=config)
 
 
 def get_server() -> X402Server:

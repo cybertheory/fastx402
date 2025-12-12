@@ -5,8 +5,8 @@ Tests for x402 client functionality
 import pytest
 import httpx
 from unittest.mock import Mock, AsyncMock, patch
-from fastx402.client import X402Client
-from fastx402.types import PaymentChallenge
+from fastx402 import X402Client
+from fastx402.types import PaymentChallenge, PaymentSignature
 
 
 @pytest.fixture
@@ -53,19 +53,21 @@ async def test_client_handles_402_and_retries(mock_402_response, mock_success_re
             assert "X-PAYMENT" in kwargs.get("headers", {})
             return mock_success_response
     
-    client = X402Client(base_url="https://api.example.com")
+    # Create client with rpc_handler (required now)
+    async def mock_rpc_handler(challenge):
+        return {
+            "signature": "0x1234",
+            "signer": "0x5678",
+            "challenge": challenge.model_dump() if hasattr(challenge, 'model_dump') else challenge.dict()
+        }
+    
+    client = X402Client(
+        base_url="https://api.example.com",
+        rpc_handler=mock_rpc_handler
+    )
     
     # Mock the client's request method
     with patch.object(client.client, 'request', side_effect=mock_request):
-        # Mock _handle_402 to return payment data
-        async def mock_handle_402(challenge, url):
-            return {
-                "signature": "0x1234",
-                "signer": "0x5678",
-                "challenge": challenge.model_dump() if hasattr(challenge, 'model_dump') else challenge
-            }
-        
-        client._handle_402 = mock_handle_402
         
         response = await client.get("/protected")
         
@@ -89,17 +91,19 @@ async def test_client_preserves_original_headers(mock_402_response, mock_success
             assert "X-PAYMENT" in headers
             return mock_success_response
     
-    client = X402Client(base_url="https://api.example.com")
+    async def mock_rpc_handler(challenge):
+        return {
+            "signature": "0x1234",
+            "signer": "0x5678",
+            "challenge": challenge.model_dump() if hasattr(challenge, 'model_dump') else challenge.dict()
+        }
+    
+    client = X402Client(
+        base_url="https://api.example.com",
+        rpc_handler=mock_rpc_handler
+    )
     
     with patch.object(client.client, 'request', side_effect=mock_request):
-        async def mock_handle_402(challenge, url):
-            return {
-                "signature": "0x1234",
-                "signer": "0x5678",
-                "challenge": challenge.model_dump() if hasattr(challenge, 'model_dump') else challenge
-            }
-        
-        client._handle_402 = mock_handle_402
         
         response = await client.get(
             "/protected",
@@ -112,10 +116,15 @@ async def test_client_preserves_original_headers(mock_402_response, mock_success
 @pytest.mark.asyncio
 async def test_client_returns_402_if_no_payment(mock_402_response):
     """Test that client returns 402 if payment handler returns None"""
-    client = X402Client(base_url="https://api.example.com")
+    async def mock_rpc_handler(challenge):
+        return None
+    
+    client = X402Client(
+        base_url="https://api.example.com",
+        rpc_handler=mock_rpc_handler
+    )
     
     with patch.object(client.client, 'request', return_value=mock_402_response):
-        # _handle_402 returns None by default
         response = await client.get("/protected")
         
         assert response.status_code == 402
@@ -128,7 +137,13 @@ async def test_client_handles_non_402_responses():
     mock_response.status_code = 200
     mock_response.json.return_value = {"msg": "success"}
     
-    client = X402Client(base_url="https://api.example.com")
+    async def mock_rpc_handler(challenge):
+        return None
+    
+    client = X402Client(
+        base_url="https://api.example.com",
+        rpc_handler=mock_rpc_handler
+    )
     
     with patch.object(client.client, 'request', return_value=mock_response):
         response = await client.get("/public")
@@ -143,7 +158,13 @@ async def test_client_post_method():
     mock_response = Mock(spec=httpx.Response)
     mock_response.status_code = 200
     
-    client = X402Client(base_url="https://api.example.com")
+    async def mock_rpc_handler(challenge):
+        return None
+    
+    client = X402Client(
+        base_url="https://api.example.com",
+        rpc_handler=mock_rpc_handler
+    )
     
     with patch.object(client.client, 'request', return_value=mock_response) as mock_req:
         await client.post("/endpoint", json={"data": "test"})
@@ -156,7 +177,13 @@ async def test_client_post_method():
 @pytest.mark.asyncio
 async def test_client_context_manager():
     """Test client as async context manager"""
-    client = X402Client(base_url="https://api.example.com")
+    async def mock_rpc_handler(challenge):
+        return None
+    
+    client = X402Client(
+        base_url="https://api.example.com",
+        rpc_handler=mock_rpc_handler
+    )
     
     async with client:
         assert client.client is not None
@@ -168,8 +195,17 @@ async def test_client_context_manager():
 @pytest.mark.asyncio
 async def test_client_base_url_normalization():
     """Test that base URL is normalized"""
-    client1 = X402Client(base_url="https://api.example.com/")
-    client2 = X402Client(base_url="https://api.example.com")
+    async def mock_rpc_handler(challenge):
+        return None
+    
+    client1 = X402Client(
+        base_url="https://api.example.com/",
+        rpc_handler=mock_rpc_handler
+    )
+    client2 = X402Client(
+        base_url="https://api.example.com",
+        rpc_handler=mock_rpc_handler
+    )
     
     assert client1.base_url == client2.base_url
     assert client1.base_url == "https://api.example.com"
